@@ -67,7 +67,7 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 
 		// using different db names allows us run test on same db instance
 		dbName1 := "db1__" + strings.ReplaceAll(t.ID, "-", "_")
-		dbName2 := "db2__" + strings.ReplaceAll(t.ID, "-", "_")
+		// dbName2 := "db2__" + strings.ReplaceAll(t.ID, "-", "_")
 
 		conn1, err1 := initTest(ctx, opts.DB1, dbName1, t)
 		if err1 != nil {
@@ -120,12 +120,15 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 			// if !validateErrs(err1, err2) {
 			// 	return fail(fmt.Errorf("commit txn #%d: %v <> %v", i, err1, err2))
 			// }
+            // log.Printf("opts.DB1 and dbName1", opts.DB1,dbName1)
+            // log.Printf("opts.DB2 and dbName2", opts.DB2,dbName1)
 
 			hs1, err1 := checkTables(ctx, opts.DB1, dbName1)
 			if err1 != nil {
 				return fail(fmt.Errorf("check table of %s after txn #%d: %v", opts.Tag1, i, err1))
 			}
-			hs2, err2 := checkTables(ctx, opts.DB1, dbName2)
+			time.Sleep(time.Duration(10)*time.Second)
+			hs2, err2 := checkTables(ctx, opts.DB2, dbName1)
 			if err2 != nil {
 				return fail(fmt.Errorf("check table of %s after txn #%d: %v", opts.Tag2, i, err2))
 			}
@@ -188,7 +191,7 @@ func checkTable(ctx context.Context, db *sql.DB, name string) (string, error) {
 			return "", err
 		}
 	}
-	rows, err := db.QueryContext(ctx, "select * from "+name)
+	rows, err := db.QueryContext(ctx, "select * from "+name+" order by c_int")
 	if err != nil {
 		return "", err
 	}
@@ -240,6 +243,7 @@ func doTxn(ctx context.Context, opts runABTestOptions, t *Test, i int, tx1 *sql.
 		// } else {
 		// 	h1 = rs1.DataDigest()
 		// }
+		
 		// // if h1 != h2 {
 		// // 	return fmt.Errorf("result digests mismatch: %s != %s @(%s,%d) %q", h1, h2, t.ID, stmt.Seq, stmt.Stmt)
 		// // }
