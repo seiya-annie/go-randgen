@@ -191,7 +191,7 @@ func checkTable(ctx context.Context, db *sql.DB, name string) (string, error) {
 			return "", err
 		}
 	}
-	rows, err := db.QueryContext(ctx, "select * from "+name+" order by c_int")
+	rows, err := db.QueryContext(ctx, "select * from "+name)
 	if err != nil {
 		return "", err
 	}
@@ -239,9 +239,9 @@ func doTxn(ctx context.Context, opts runABTestOptions, t *Test, i int, tx1 *sql.
 		// h1 := ""
 		// if q := strings.ToLower(stmt.Stmt); stmt.IsQuery && rs1.NRows() > 1 &&
 		// 	(!strings.Contains(q, "order by") || strings.Contains(q, "force-unordered")) {
-		// 	h1 = unorderedDigest(rs1, nil)
+		// 	unorderedDigest(rs1, nil)
 		// } else {
-		// 	h1 = rs1.DataDigest()
+		// 	rs1.DataDigest()
 		// }
 		
 		// // if h1 != h2 {
