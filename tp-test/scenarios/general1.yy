@@ -107,12 +107,12 @@ maybe_write_limit: | [weight=2] order by c_int, c_str, c_double, c_decimal limit
 col_list: c_int, c_str, c_double, c_decimal, c_datetime, c_timestamp
 
 common_select:
-    select col_list from t where c_int = rand_c_int
- |  select col_list from t where c_int in (rand_c_int, rand_c_int, rand_c_int)
- |  select col_list from t where c_int between { k = T.c_int.rand(); print(k) } and { print(k+3) }
- |  select col_list from t where c_str = rand_c_str
- |  select col_list from t where c_decimal < { local r = T.c_decimal.range; print((r.max-r.min)/2+r.min) }
- |  select col_list from t where c_datetime > rand_c_datetime
+    select col_list from t where c_int = rand_c_int order by c_int
+ |  select col_list from t where c_int in (rand_c_int, rand_c_int, rand_c_int) order by c_int
+ |  select col_list from t where c_int between { k = T.c_int.rand(); print(k) } and { print(k+3) } order by c_int
+ |  select col_list from t where c_str = rand_c_str order by c_int
+ |  select col_list from t where c_decimal < { local r = T.c_decimal.range; print((r.max-r.min)/2+r.min) } order by c_int
+ |  select col_list from t where c_datetime > rand_c_datetime order by c_int
 
 agg_select:
     select count(*) from t where c_timestamp between { t = T.c_timestamp.rand(); printf("'%s'", t) } and date_add({ printf("'%s'", t) }, interval 15 day)

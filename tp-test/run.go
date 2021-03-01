@@ -67,7 +67,7 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 
 		// using different db names allows us run test on same db instance
 		dbName1 := "db1__" + strings.ReplaceAll(t.ID, "-", "_")
-		dbName2 := "db2__" + strings.ReplaceAll(t.ID, "-", "_")
+		// dbName2 := "db2__" + strings.ReplaceAll(t.ID, "-", "_")
 
 		conn1, err1 := initTest(ctx, opts.DB1, dbName1, t)
 		if err1 != nil {
@@ -75,16 +75,16 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 			log.Printf("failed to init %s/%s: %v", opts.Tag1, dbName1, err1)
 			continue
 		}
-		conn2, err2 := initTest(ctx, opts.DB2, dbName2, t)
-		if err2 != nil {
-			conn1.Close()
-			store.SetTest(t.ID, TestFailed, "init db2: "+err2.Error())
-			log.Printf("failed to init %s/%s: %v", opts.Tag2, dbName2, err2)
-			continue
-		}
+		// conn2, err2 := initTest(ctx, opts.DB2, dbName2, t)
+		// if err2 != nil {
+			// conn1.Close()
+		// 	store.SetTest(t.ID, TestFailed, "init db2: "+err2.Error())
+		// 	log.Printf("failed to init %s/%s: %v", opts.Tag2, dbName2, err2)
+		// 	continue
+		// }
 		closeConns := func() {
 			conn1.Close()
-			conn2.Close()
+			// conn2.Close()
 		}
 
 		log.Printf("run test %s", t.ID)
@@ -94,17 +94,17 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 				closeConns()
 				return fmt.Errorf("start txn #%d of test(%s) on %s: %v", i, t.ID, opts.Tag1, err1)
 			}
-			tx2, err2 := conn2.BeginTx(ctx, nil)
-			if err2 != nil {
-				tx1.Rollback()
-				closeConns()
-				return fmt.Errorf("start txn #%d of test(%s) on %s: %v", i, t.ID, opts.Tag2, err2)
-			}
+			// tx2, err2 := conn2.BeginTx(ctx, nil)
+			// if err2 != nil {
+			// 	tx1.Rollback()
+			// 	closeConns()
+			// 	return fmt.Errorf("start txn #%d of test(%s) on %s: %v", i, t.ID, opts.Tag2, err2)
+			// }
 
 			fail := func(err error) error {
 				defer func() { recover() }()
 				tx1.Rollback()
-				tx2.Rollback()
+				// tx2.Rollback()
 				closeConns()
 				store.SetTest(t.ID, TestFailed, err.Error())
 				log.Printf("test(%s) failed at txn #%d: %v", t.ID, i, err)
@@ -112,20 +112,23 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 				return err
 			}
 
-			if err := doTxn(ctx, opts, t, i, tx1, tx2); err != nil {
+			if err := doTxn(ctx, opts, t, i, tx1); err != nil {
 				return fail(err)
 			}
 
-			err1, err2 = tx1.Commit(), tx2.Commit()
-			if !validateErrs(err1, err2) {
-				return fail(fmt.Errorf("commit txn #%d: %v <> %v", i, err1, err2))
-			}
+			err1 = tx1.Commit()
+			// if !validateErrs(err1, err2) {
+			// 	return fail(fmt.Errorf("commit txn #%d: %v <> %v", i, err1, err2))
+			// }
+            // log.Printf("opts.DB1 and dbName1", opts.DB1,dbName1)
+            // log.Printf("opts.DB2 and dbName2", opts.DB2,dbName1)
 
 			hs1, err1 := checkTables(ctx, opts.DB1, dbName1)
 			if err1 != nil {
 				return fail(fmt.Errorf("check table of %s after txn #%d: %v", opts.Tag1, i, err1))
 			}
-			hs2, err2 := checkTables(ctx, opts.DB1, dbName2)
+			time.Sleep(time.Duration(10)*time.Second)
+			hs2, err2 := checkTables(ctx, opts.DB2, dbName1)
 			if err2 != nil {
 				return fail(fmt.Errorf("check table of %s after txn #%d: %v", opts.Tag2, i, err2))
 			}
@@ -139,7 +142,7 @@ func runABTest(ctx context.Context, failed chan struct{}, opts runABTestOptions)
 		store.SetTest(t.ID, TestPassed, "")
 
 		conn1.ExecContext(ctx, "drop database if exists "+dbName1)
-		conn2.ExecContext(ctx, "drop database if exists "+dbName2)
+		// conn2.ExecContext(ctx, "drop database if exists "+dbName2)
 		closeConns()
 	}
 	return nil
@@ -202,7 +205,7 @@ func checkTable(ctx context.Context, db *sql.DB, name string) (string, error) {
 	}), nil
 }
 
-func doTxn(ctx context.Context, opts runABTestOptions, t *Test, i int, tx1 *sql.Tx, tx2 *sql.Tx) error {
+func doTxn(ctx context.Context, opts runABTestOptions, t *Test, i int, tx1 *sql.Tx) error {
 	txn := t.Steps[i]
 
 	record := func(seq int, tag string, rs *resultset.ResultSet, err error) {
@@ -223,30 +226,31 @@ func doTxn(ctx context.Context, opts runABTestOptions, t *Test, i int, tx1 *sql.
 		ctx1, _ := context.WithTimeout(ctx, time.Duration(opts.QueryTimeout)*time.Second)
 		rs1, err1 := doStmt(ctx1, tx1, stmt)
 		record(stmt.Seq, opts.Tag1, rs1, err1)
-		ctx2, _ := context.WithTimeout(ctx, time.Duration(opts.QueryTimeout)*time.Second)
-		rs2, err2 := doStmt(ctx2, tx2, stmt)
-		record(stmt.Seq, opts.Tag2, rs2, err2)
-		if !validateErrs(err1, err2) {
-			return fmt.Errorf("errors mismatch: %v <> %v @(%s,%d) %q", err1, err2, t.ID, stmt.Seq, stmt.Stmt)
-		}
-		if rs1 == nil || rs2 == nil {
-			log.Printf("skip query error: [%v] [%v] @(%s,%d)", err1, err2, t.ID, stmt.Seq)
+		// ctx2, _ := context.WithTimeout(ctx, time.Duration(opts.QueryTimeout)*time.Second)
+		// rs2, err2 := doStmt(ctx2, tx2, stmt)
+		// record(stmt.Seq, opts.Tag2, rs2, err2)
+		// if !validateErrs(err1) {
+		// 	return fmt.Errorf("errors mismatch: %v  @(%s,%d) %q", err1, t.ID, stmt.Seq, stmt.Stmt)
+		// }
+		if rs1 == nil  {
+			log.Printf("skip query error: [%v] @(%s,%d)", err1,  t.ID, stmt.Seq)
 			continue
 		}
-		h1, h2 := "", ""
-		if q := strings.ToLower(stmt.Stmt); stmt.IsQuery && rs1.NRows() == rs2.NRows() && rs1.NRows() > 1 &&
-			(!strings.Contains(q, "order by") || strings.Contains(q, "force-unordered")) {
-			h1, h2 = unorderedDigest(rs1, nil), unorderedDigest(rs2, nil)
-		} else {
-			h1, h2 = rs1.DataDigest(), rs2.DataDigest()
-		}
-		if h1 != h2 {
-			return fmt.Errorf("result digests mismatch: %s != %s @(%s,%d) %q", h1, h2, t.ID, stmt.Seq, stmt.Stmt)
-		}
-		if rs1.IsExecResult() && rs1.ExecResult().RowsAffected != rs2.ExecResult().RowsAffected {
-			return fmt.Errorf("rows affected mismatch: %d != %d @(%s,%d) %q",
-				rs1.ExecResult().RowsAffected, rs2.ExecResult().RowsAffected, t.ID, stmt.Seq, stmt.Stmt)
-		}
+		// h1 := ""
+		// if q := strings.ToLower(stmt.Stmt); stmt.IsQuery && rs1.NRows() > 1 &&
+		// 	(!strings.Contains(q, "order by") || strings.Contains(q, "force-unordered")) {
+		// 	unorderedDigest(rs1, nil)
+		// } else {
+		// 	rs1.DataDigest()
+		// }
+		
+		// // if h1 != h2 {
+		// // 	return fmt.Errorf("result digests mismatch: %s != %s @(%s,%d) %q", h1, h2, t.ID, stmt.Seq, stmt.Stmt)
+		// // }
+		// if rs1.IsExecResult()  {
+		// 	return fmt.Errorf("rows affected mismatch: %d != %d @(%s,%d) %q",
+		// 		rs1.ExecResult().RowsAffected, rs2.ExecResult().RowsAffected, t.ID, stmt.Seq, stmt.Stmt)
+		// }
 	}
 	return nil
 }
